@@ -37,7 +37,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
+	v1 "k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -219,6 +219,11 @@ func (ksm *kubeSubnetManager) GetNetworkConfig(ctx context.Context) (*subnet.Con
 	return ksm.subnetConf, nil
 }
 
+func nodeGetCIDR(n *v1.Node) string {
+	cidr, _ := n.Annotations["flannelcidr"]
+	return cidr
+}
+
 func (ksm *kubeSubnetManager) AcquireLease(ctx context.Context, attrs *subnet.LeaseAttrs) (*subnet.Lease, error) {
 	cachedNode, err := ksm.nodeStore.Get(ksm.nodeName)
 	if err != nil {
@@ -230,14 +235,14 @@ func (ksm *kubeSubnetManager) AcquireLease(ctx context.Context, attrs *subnet.Le
 	}
 	n := nobj.(*v1.Node)
 
-	if n.Spec.PodCIDR == "" {
+	if nodeGetCIDR(n) == "" {
 		return nil, fmt.Errorf("node %q pod cidr not assigned", ksm.nodeName)
 	}
 	bd, err := attrs.BackendData.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
-	_, cidr, err := net.ParseCIDR(n.Spec.PodCIDR)
+	_, cidr, err := net.ParseCIDR(nodeGetCIDR(n))
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +317,7 @@ func (ksm *kubeSubnetManager) nodeToLease(n v1.Node) (l subnet.Lease, err error)
 	l.Attrs.BackendType = n.Annotations[ksm.annotations.BackendType]
 	l.Attrs.BackendData = json.RawMessage(n.Annotations[ksm.annotations.BackendData])
 
-	_, cidr, err := net.ParseCIDR(n.Spec.PodCIDR)
+	_, cidr, err := net.ParseCIDR(nodeGetCIDR(&n))
 	if err != nil {
 		return l, err
 	}
